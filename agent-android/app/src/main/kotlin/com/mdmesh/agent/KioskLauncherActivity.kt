@@ -5,6 +5,8 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.graphics.Typeface
 import android.os.Bundle
@@ -17,6 +19,7 @@ import android.widget.EditText
 import android.widget.GridLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
+import android.widget.ProgressBar
 import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
@@ -29,6 +32,7 @@ import androidx.lifecycle.repeatOnLifecycle
 import kotlinx.coroutines.flow.distinctUntilChanged
 import com.mdmesh.agent.service.CheckInService
 import com.mdmesh.core.kiosk.KioskApplier
+import com.mdmesh.core.kiosk.KioskSplashImage
 import com.mdmesh.core.store.KioskStateStore
 import com.mdmesh.core.sync.CheckInWorker
 import com.mdmesh.core.telemetry.EventSink
@@ -38,7 +42,9 @@ import com.mdmesh.kiosk.KioskController
 import com.mdmesh.kiosk.KioskReturnPolicy
 import com.mdmesh.proto.KioskApplyPayload
 import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import javax.inject.Inject
 
 /**
@@ -77,6 +83,12 @@ class KioskLauncherActivity : ComponentActivity() {
     /** The hold screen is showing (so its event is recorded once per hold). */
     private var holding = false
 
+    /** The image shown in place of the plain splash, when the enrollment QR named one. */
+    private val splashImage by lazy { KioskSplashImage(this) }
+
+    /** The splash is up because the pinned app is not installed yet (see [launchPinned]). */
+    private var waitingForPinned = false
+
     /** Opens the pinned app when it is installed after the kiosk started (see [launchPinned]). */
     private val pinnedInstalled = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
@@ -96,6 +108,12 @@ class KioskLauncherActivity : ComponentActivity() {
             addDataScheme("package")
         }
         ContextCompat.registerReceiver(this, pinnedInstalled, added, ContextCompat.RECEIVER_NOT_EXPORTED)
+        // Enrollment fetches the splash image; if that failed, try again, and show it if the app is still awaited.
+        lifecycleScope.launch {
+            val fetched = splashImage.file == null && withContext(Dispatchers.IO) { splashImage.fetchIfMissing() }
+            val p = active
+            if (fetched && waitingForPinned && p != null) setContentView(splashView(p))
+        }
         // React to kiosk.enter/kiosk.exit live: those run in the check-in service, not here, so we
         // observe the persisted state and re-render (enter → grid/pin, exit → unpin + idle) without
         // waiting for the user to touch the screen.
@@ -162,10 +180,12 @@ class KioskLauncherActivity : ComponentActivity() {
         val intent = pkg?.let { packageManager.getLaunchIntentForPackage(it) }
         if (intent == null) {
             val installed = pkg != null && runCatching { packageManager.getPackageInfo(pkg, 0) }.isSuccess
+            waitingForPinned = pkg != null && !installed
             // Installed but not launchable → fall back to the grid.
-            setContentView(if (pkg != null && !installed) splashView(p) else launcherGrid(p))
+            setContentView(if (waitingForPinned) splashView(p) else launcherGrid(p))
             return
         }
+        waitingForPinned = false
         setContentView(splashView(p))
         runCatching { startActivity(intent) }
     }
@@ -262,10 +282,33 @@ class KioskLauncherActivity : ComponentActivity() {
     private fun splashView(p: KioskApplyPayload): View {
         val bg = parseColor(p.theme.backgroundColor, INK)
         val fg = parseColor(p.theme.textColor, TEXT)
+        val image = splashImage.file?.let { runCatching { decodeForScreen(it) }.getOrNull() }
         return frame(bg).apply {
-            addView(centeredText("Loading…", 18f, fg))
+            if (image == null) {
+                addView(centeredText("Loading…", 18f, fg))
+            } else {
+                // The deployment's own image, filling the screen, and a spinner below its middle.
+                addView(ImageView(this@KioskLauncherActivity).apply {
+                    setImageBitmap(image)
+                    scaleType = ImageView.ScaleType.CENTER_CROP
+                }, android.widget.FrameLayout.LayoutParams(MATCH, MATCH))
+                val spinner = android.widget.FrameLayout.LayoutParams(
+                    dp(SPINNER_DP), dp(SPINNER_DP), Gravity.CENTER_HORIZONTAL or Gravity.BOTTOM,
+                ).apply { bottomMargin = resources.displayMetrics.heightPixels / SPINNER_FROM_BOTTOM }
+                addView(ProgressBar(this@KioskLauncherActivity).apply { isIndeterminate = true }, spinner)
+            }
             addExitAffordance(p, this)
         }
+    }
+
+    /** Decodes [file] no larger than the screen needs, so a large image cannot exhaust memory. */
+    private fun decodeForScreen(file: java.io.File): Bitmap? {
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeFile(file.path, bounds)
+        val screen = maxOf(resources.displayMetrics.widthPixels, resources.displayMetrics.heightPixels)
+        var sample = 1
+        while (maxOf(bounds.outWidth, bounds.outHeight) / (sample * 2) >= screen) sample *= 2
+        return BitmapFactory.decodeFile(file.path, BitmapFactory.Options().apply { inSampleSize = sample })
     }
 
     private fun launcherGrid(p: KioskApplyPayload): View {
@@ -456,6 +499,9 @@ class KioskLauncherActivity : ComponentActivity() {
 
     private companion object {
         const val MATCH = ViewGroup.LayoutParams.MATCH_PARENT
+        /** The splash image's spinner: its size, and its distance from the bottom as a fraction of the screen. */
+        const val SPINNER_DP = 36
+        const val SPINNER_FROM_BOTTOM = 5
         const val GESTURE_TAPS = 7
         const val GESTURE_WINDOW_MS = 3_000L
         val INK = Color.parseColor("#0E1117")

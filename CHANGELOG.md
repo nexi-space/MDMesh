@@ -9,6 +9,8 @@ line under Unreleased.
 ## Unreleased
 
 New
+- Kiosk: a QR code can name a full-screen image, under `com.mdmesh.SPLASH_IMAGE_URL` in its admin extras, for the
+  kiosk to show while its app loads, so the wait at enrollment carries your branding. Needs agent 0.4.0.
 - Enrollment: a QR code can name system apps for the agent to hide as it takes over, under
   `com.mdmesh.HIDE_PACKAGES` in its admin extras, so the setup pages and app promoters they add never show. Needs
   agent 0.4.0.
