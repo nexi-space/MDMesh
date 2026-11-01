@@ -58,6 +58,7 @@ class KioskApplier(
                 // volume lock is reported (the config document is then not persisted and is re-applied), and the
                 // short-circuit above re-asserts it without relaunching the kiosk.
                 store.save(p)
+                home.hideOtherLaunchers(p.kioskApps())
                 home.showLauncher()
                 applySafeMode(applyVolume(p, r))
             }
@@ -82,8 +83,7 @@ class KioskApplier(
                 systemInfo = p.features.systemInfo, keyguard = p.features.keyguard, lockButtons = p.features.lockButtons,
             ),
         )
-        val allowed = (p.allowedPackages + listOfNotNull(p.pinPackage)).distinct()
-        return kiosk.enter(homeComponent, allowed, features)
+        return kiosk.enter(homeComponent, p.kioskApps(), features)
     }
 
     /** In kiosk: block Safe Mode unless the configuration allows it ([safeModeBlocked]). */
@@ -131,6 +131,7 @@ class KioskApplier(
         store.save(null)
         safeModeSetter.set(inKiosk = false) // best effort, like the volume lock
         if (handBackHome) {
+            home.restoreOtherLaunchers() // first, so there is an OEM launcher to hand HOME back to
             home.setClaimEnabled(false)
             home.showOemHome()
         }
@@ -145,3 +146,6 @@ class KioskApplier(
     /** True when a kiosk payload is persisted (device believes it is / should be in kiosk). */
     suspend fun isPersisted(): Boolean = store.load() != null
 }
+
+/** The apps this kiosk runs: its allowlist and the pinned app. */
+private fun KioskApplyPayload.kioskApps(): List<String> = (allowedPackages + listOfNotNull(pinPackage)).distinct()

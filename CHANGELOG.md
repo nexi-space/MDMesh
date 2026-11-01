@@ -18,6 +18,9 @@ New
   (thanks @Przemek-Magic).
 
 Fixes
+- Kiosk: the phone's own launcher no longer shows before the kiosk app, neither at enrollment while the app downloads
+  nor at every restart. The kiosk starts before the app's install finishes and opens the app once it is in, and the
+  other launchers are hidden while in kiosk and come back when it ends. Needs agent 0.4.0.
 - Kiosk: a device enrolled by QR code no longer shows setup pages (navigation mode and the like) at every restart.
   The kiosk used to start while the setup wizard still had pages left, so setup was never recorded as finished. The
   kiosk now waits for those pages at enrollment and starts as soon as they are done. Needs agent 0.4.0.
