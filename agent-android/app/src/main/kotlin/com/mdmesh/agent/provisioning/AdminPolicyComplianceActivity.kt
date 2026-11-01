@@ -11,6 +11,7 @@ import com.mdmesh.agent.service.CheckInService
 import com.mdmesh.core.action.ResetPasswordTokenStore
 import com.mdmesh.core.config.ServerConfigStore
 import com.mdmesh.core.kiosk.EnrollmentHiddenApps
+import com.mdmesh.core.kiosk.KioskSplashImage
 import com.mdmesh.core.location.LocationPermissions
 import com.mdmesh.core.store.EnrollTokenStore
 import com.mdmesh.core.sync.CheckInWorker
@@ -59,6 +60,10 @@ class AdminPolicyComplianceActivity : Activity() {
         }
 
         hideEnrollmentApps(ctx)
+        // The kiosk's splash image, fetched now while the network is up for enrollment (KioskSplashImage).
+        val splash = KioskSplashImage(ctx)
+        splash.save(extrasString(KioskSplashImage.EXTRA))
+        CoroutineScope(Dispatchers.IO).launch { splash.fetchIfMissing() }
 
         // TODO: enforce mandatory baseline policy here before returning RESULT_OK.
         setResult(RESULT_OK)

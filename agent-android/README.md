@@ -124,6 +124,10 @@ splash for a pinned app that is not installed yet, opening it when it lands. Whi
 launchers (HOME filters at priority 0): at boot, before storage unlocks, Android only starts a direct-boot-aware
 HOME, which the kiosk launcher is not, so an OEM launcher would show first. Leaving kiosk unhides them.
 
+That wait can carry the deployment's branding: `com.mdmesh.SPLASH_IMAGE_URL` in the QR's admin extras (an https
+address) names a full-screen image, downloaded at enrollment, that the kiosk launcher shows with a spinner in place
+of its plain "Loading…", behind the pinned app as it opens and while it is not installed yet. See `KioskSplashImage`.
+
 ## Local API (offline Wi-Fi for the pinned kiosk app)
 
 Since Android 10 an ordinary app cannot add, enable, disable or remove saved Wi-Fi networks, or switch the radio.
