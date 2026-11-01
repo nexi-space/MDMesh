@@ -1,6 +1,7 @@
 package com.mdmesh.core.config
 
 import com.mdmesh.core.kiosk.KioskApplier
+import com.mdmesh.core.kiosk.UserSetup
 import com.mdmesh.core.store.ConfigStateStore
 import com.mdmesh.kiosk.KioskResult
 import com.mdmesh.policy.PolicyOutcome
@@ -30,12 +31,14 @@ import kotlinx.coroutines.sync.withLock
  *   operation and never kept: Device-Owner status flips to true partway through QR provisioning, after this
  *   singleton may have been built (#76). A key whose check threw ([ResolvedToggles.errors]) is reported failed,
  *   never unsupported, so the document is not saved and the server re-sends it; it is never applied or released.
+ * @param userSetup the setup wizard, which a kiosk waits for ([UserSetup]). The default is for tests only.
  */
 class ConfigApplier(
     private val toggles: () -> ResolvedToggles,
     private val kiosk: KioskApplier,
     private val setLocationMode: (String) -> Unit,
     private val store: ConfigStateStore,
+    private val userSetup: UserSetup = UserSetup.Complete,
 ) {
     private val mutex = Mutex()
 
@@ -157,6 +160,11 @@ class ConfigApplier(
         // manually-kiosked device.
         val desiredKiosk = doc.kiosk
         val r = when {
+            // Not over an unfinished setup wizard, which would resume at every boot (UserSetup). Deferred, so this
+            // document is still saved, and the re-apply armed here replays it when the wizard finishes. A device
+            // already in kiosk stays in it: nothing is exited.
+            desiredKiosk != null && !userSetup.isComplete() ->
+                KioskResult.Deferred(UserSetup.INCOMPLETE).also { userSetup.reapplyWhenComplete() }
             desiredKiosk != null -> kiosk.enter(desiredKiosk)
             previousConfigHadKiosk && kiosk.isPersisted() -> kiosk.exit()
             else -> return null
@@ -165,6 +173,7 @@ class ConfigApplier(
             KioskResult.Ok -> ConfigOutcome.APPLIED
             KioskResult.Unsupported -> ConfigOutcome.UNSUPPORTED
             is KioskResult.Failed -> ConfigOutcome.failed(r.reason)
+            is KioskResult.Deferred -> ConfigOutcome.deferred(r.reason)
         }
     }
 

@@ -15,6 +15,9 @@ New
   (thanks @Przemek-Magic).
 
 Fixes
+- Kiosk: a device enrolled by QR code no longer shows setup pages (navigation mode and the like) at every restart.
+  The kiosk used to start while the setup wizard still had pages left, so setup was never recorded as finished. The
+  kiosk now waits for those pages at enrollment and starts as soon as they are done. Needs agent 0.4.0.
 - Alerts: devices enrolled by QR code show Send alert messages and the "MDMesh active" notification. The agent grants
   itself the notification permission it was missing, and an alert is reported as failed instead of done when
   notifications are turned off on the device. Needs agent 0.4.0; no server update needed (thanks @Przemek-Magic).

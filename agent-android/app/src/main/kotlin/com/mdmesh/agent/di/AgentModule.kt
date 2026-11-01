@@ -37,6 +37,7 @@ import com.mdmesh.core.power.PowerModeStore
 import com.mdmesh.core.command.handlers.KioskEnterHandler
 import com.mdmesh.core.command.handlers.KioskExitHandler
 import com.mdmesh.core.kiosk.AndroidKioskHomeSwitch
+import com.mdmesh.core.kiosk.AndroidUserSetup
 import com.mdmesh.core.kiosk.ConfiguredSafeModeSetting
 import com.mdmesh.core.kiosk.KioskApplier
 import com.mdmesh.core.command.handlers.PolicyApplyHandler
@@ -267,6 +268,11 @@ object AgentModule {
     private fun kioskHomeAlias(context: Context): ComponentName =
         ComponentName(context.packageName, "com.mdmesh.agent.KioskHomeAlias")
 
+    /** One instance: the kiosk's wait for the setup wizard and its resumption at app start share one observer. */
+    @Provides
+    @Singleton
+    fun provideUserSetup(@ApplicationContext context: Context): AndroidUserSetup = AndroidUserSetup(context)
+
     @Provides
     @Singleton
     fun provideKioskApplier(
@@ -284,7 +290,8 @@ object AgentModule {
     }
 
     @Provides @IntoSet
-    fun provideKioskEnterHandler(applier: KioskApplier): CommandHandler = KioskEnterHandler(applier)
+    fun provideKioskEnterHandler(applier: KioskApplier, userSetup: AndroidUserSetup): CommandHandler =
+        KioskEnterHandler(applier, userSetup)
 
     @Provides @IntoSet
     fun provideKioskExitHandler(applier: KioskApplier): CommandHandler = KioskExitHandler(applier)
@@ -359,7 +366,8 @@ object AgentModule {
         kiosk: KioskApplier,
         location: LocationModeStore,
         store: ConfigStateStore,
-    ): ConfigApplier = ConfigApplier(registry::togglePolicies, kiosk, location::set, store)
+        userSetup: AndroidUserSetup,
+    ): ConfigApplier = ConfigApplier(registry::togglePolicies, kiosk, location::set, store, userSetup)
 
     @Provides
     @IntoSet
