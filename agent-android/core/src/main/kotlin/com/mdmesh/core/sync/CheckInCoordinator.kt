@@ -9,6 +9,8 @@ import com.mdmesh.core.store.DeviceIdentity
 import com.mdmesh.core.telemetry.EventSink
 import com.mdmesh.core.telemetry.TelemetrySource
 import com.mdmesh.proto.AgentCheckInRequest
+import com.mdmesh.proto.CommandEnvelope
+import com.mdmesh.proto.DeviceAction
 import com.mdmesh.proto.EventType
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.sync.Mutex
@@ -98,7 +100,7 @@ class CheckInCoordinator @Inject constructor(
         // Before this batch runs: its installs are judged by what this server guarantees.
         installIntegrity.update(data.installIntegrity)
 
-        for (command in data.commands) {
+        for (command in runOrder(data.commands)) {
             val result = dispatcher.dispatch(command)
             // Saved one by one: a later command can end the process (an agent self-update does), and the results
             // before it must still reach the server.
@@ -108,6 +110,21 @@ class CheckInCoordinator @Inject constructor(
         }
     }
 }
+
+/**
+ * The order a check-in's commands run in: the server's, except that a batch holding `config.apply` runs its
+ * `app.install`s last. Commands run one at a time, and enrollment sends the kiosk's app before the configuration
+ * that pins it, so the kiosk waited for the whole download — the better part of a minute for a large app, on the
+ * phone's own launcher. The kiosk launcher waits for a pinned app that is not installed yet, so the order between
+ * them does not matter for correctness.
+ */
+internal fun runOrder(commands: List<CommandEnvelope>): List<CommandEnvelope> {
+    if (commands.none { it.type == DeviceAction.CONFIG_APPLY }) return commands
+    val (installs, rest) = commands.partition { it.type == APP_INSTALL }
+    return rest + installs
+}
+
+private const val APP_INSTALL = "app.install"
 
 /** A check-in was rejected by the server. Lets the worker retry with backoff. */
 class CheckInException(message: String) : Exception(message)

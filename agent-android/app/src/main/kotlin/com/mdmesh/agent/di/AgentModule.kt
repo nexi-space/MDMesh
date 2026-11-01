@@ -283,7 +283,7 @@ object AgentModule {
     ): KioskApplier {
         val home = kioskHomeAlias(context)
         return KioskApplier(
-            kiosk, store, AndroidKioskHomeSwitch(context, home), home,
+            kiosk, store, AndroidKioskHomeSwitch(context, home, AdminReceiver.componentName(context)), home,
             safeMode = ConfiguredSafeModeSetting(configStore),
             isLockTaskActive = { kiosk.isLocked(context) },
         )

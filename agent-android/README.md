@@ -118,6 +118,12 @@ pages. On a Lenovo tablet, `com.tblenovo.setup,com.aura.oobe.lenovo` removes the
 pages and the app promoter shown after setup. Google's own pages stay. Hidden apps are not uninstalled, and
 `setApplicationHidden(admin, pkg, false)` brings one back. See `EnrollmentHiddenApps`.
 
+The phone's own launcher never shows on a kiosk device. A check-in batch holding `config.apply` runs its
+`app.install`s last, so the kiosk starts without waiting for a large download, and the kiosk launcher waits on its
+splash for a pinned app that is not installed yet, opening it when it lands. While in kiosk the agent hides the other
+launchers (HOME filters at priority 0): at boot, before storage unlocks, Android only starts a direct-boot-aware
+HOME, which the kiosk launcher is not, so an OEM launcher would show first. Leaving kiosk unhides them.
+
 ## Local API (offline Wi-Fi for the pinned kiosk app)
 
 Since Android 10 an ordinary app cannot add, enable, disable or remove saved Wi-Fi networks, or switch the radio.

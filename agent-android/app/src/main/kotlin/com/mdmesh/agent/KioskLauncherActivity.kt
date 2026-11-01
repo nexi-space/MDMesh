@@ -1,7 +1,10 @@
 package com.mdmesh.agent
 
 import android.app.ActivityManager
+import android.content.BroadcastReceiver
+import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.graphics.Color
 import android.graphics.Typeface
 import android.os.Bundle
@@ -74,12 +77,25 @@ class KioskLauncherActivity : ComponentActivity() {
     /** The hold screen is showing (so its event is recorded once per hold). */
     private var holding = false
 
+    /** Opens the pinned app when it is installed after the kiosk started (see [launchPinned]). */
+    private val pinnedInstalled = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            val p = active ?: return
+            if (p.mode == "single" && !holding && intent.data?.schemeSpecificPart == p.pinPackage) launchPinned(p)
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         // A kiosk device boots straight into HOME (this); keep the command channel alive even if
         // the user never opens the status screen.
         ContextCompat.startForegroundService(this, Intent(this, CheckInService::class.java))
         setContentView(idleView())
+        val added = IntentFilter(Intent.ACTION_PACKAGE_ADDED).apply {
+            addAction(Intent.ACTION_PACKAGE_REPLACED)
+            addDataScheme("package")
+        }
+        ContextCompat.registerReceiver(this, pinnedInstalled, added, ContextCompat.RECEIVER_NOT_EXPORTED)
         // React to kiosk.enter/kiosk.exit live: those run in the check-in service, not here, so we
         // observe the persisted state and re-render (enter → grid/pin, exit → unpin + idle) without
         // waiting for the user to touch the screen.
@@ -88,6 +104,11 @@ class KioskLauncherActivity : ComponentActivity() {
                 store.flow().distinctUntilChanged().collect(::applyState)
             }
         }
+    }
+
+    override fun onDestroy() {
+        runCatching { unregisterReceiver(pinnedInstalled) }
+        super.onDestroy()
     }
 
     override fun onResume() {
@@ -131,11 +152,18 @@ class KioskLauncherActivity : ComponentActivity() {
         }
     }
 
-    /** Launch + show the pinned app (single mode), with a themed splash behind it. */
+    /**
+     * Launch + show the pinned app (single mode), with a themed splash behind it. An app not installed yet waits on
+     * the splash: enrollment installs it after the kiosk starts (`runOrder`), and [pinnedInstalled] launches it when
+     * it lands.
+     */
     private fun launchPinned(p: KioskApplyPayload) {
-        val intent = p.pinPackage?.let { packageManager.getLaunchIntentForPackage(it) }
+        val pkg = p.pinPackage
+        val intent = pkg?.let { packageManager.getLaunchIntentForPackage(it) }
         if (intent == null) {
-            setContentView(launcherGrid(p)) // unknown package → fall back to the grid
+            val installed = pkg != null && runCatching { packageManager.getPackageInfo(pkg, 0) }.isSuccess
+            // Installed but not launchable → fall back to the grid.
+            setContentView(if (pkg != null && !installed) splashView(p) else launcherGrid(p))
             return
         }
         setContentView(splashView(p))
