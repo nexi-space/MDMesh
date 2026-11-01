@@ -9,6 +9,9 @@ line under Unreleased.
 ## Unreleased
 
 New
+- Enrollment: a QR code can name system apps for the agent to hide as it takes over, under
+  `com.mdmesh.HIDE_PACKAGES` in its admin extras, so the setup pages and app promoters they add never show. Needs
+  agent 0.4.0.
 - Audit log: commands sent from a device's page or to selected devices (wipe, lock, PIN reset, kiosk, alert) are
   recorded with who sent them, from which address, to which devices, and the command type. The command's settings are
   not recorded, since they can hold a password. "Install config apps" on a device is recorded too
