@@ -82,6 +82,13 @@ interface KioskController {
      */
     fun setSafeModeBlocked(blocked: Boolean): KioskResult = KioskResult.Unsupported
 
+    /**
+     * Hold back ([quiet] = true) or show again Android's "app has stopped" and "isn't responding" dialogs, via
+     * `UserManager.DISALLOW_SYSTEM_ERROR_DIALOGS` (Device Owner, API 28+). Held back, a crashed app is closed as if
+     * "Close app" were tapped, so a kiosk app restarts instead of waiting behind a dialog nobody is there to answer.
+     */
+    fun setErrorDialogsQuiet(quiet: Boolean): KioskResult = KioskResult.Unsupported
+
     /** True if the device is currently pinned in lock-task mode. */
     fun isLocked(context: Context): Boolean
 

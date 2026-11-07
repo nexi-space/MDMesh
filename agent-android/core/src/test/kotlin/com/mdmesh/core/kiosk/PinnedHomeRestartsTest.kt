@@ -52,9 +52,9 @@ class PinnedHomeRestartsTest {
     @Test fun `a pinned HOME app that keeps restarting gives HOME back to the agent's launcher`() = runTest {
         val c = Controller(); val h = Home(mapOf("com.a" to appHome))
         val r = restarts(c, h)
-        repeat(CrashLoopGuard.LOOP_CRASHES) { r.onLockTaskEntered("com.a"); clock += 1_000 }
+        repeat(CrashLoopGuard.LOOP_CRASHES) { r.onStarted("com.a"); clock += 1_000 }
         assertTrue("no hold before the threshold", c.homes.isEmpty())
-        r.onLockTaskEntered("com.a")
+        r.onStarted("com.a")
         assertHomes(c.homes, agentHome)
         assertEquals(listOf("launcher"), h.log)
     }
@@ -63,7 +63,7 @@ class PinnedHomeRestartsTest {
         val c = Controller(); val h = Home(mapOf("com.a" to appHome))
         val r = restarts(c, h)
         repeat(CrashLoopGuard.LOOP_CRASHES * 3) {
-            r.onLockTaskEntered("com.a")
+            r.onStarted("com.a")
             clock += CrashLoopGuard.LOOP_TIME_SPAN + 1
         }
         assertTrue(c.homes.isEmpty())
@@ -72,13 +72,13 @@ class PinnedHomeRestartsTest {
     @Test fun `only the pinned app counts, and only while it is HOME`() = runTest {
         val other = Controller(); val otherHome = Home(mapOf("com.a" to appHome))
         val r = restarts(other, otherHome)
-        repeat(CrashLoopGuard.LOOP_CRASHES * 2) { r.onLockTaskEntered("com.mdmesh.agent") }
+        repeat(CrashLoopGuard.LOOP_CRASHES * 2) { r.onStarted("com.b") }
         assertTrue(other.homes.isEmpty())
 
-        // The agent's launcher is HOME (the app is not a HOME app): it counts returns itself, so lock task does not.
+        // The agent's launcher is HOME (the app is not a HOME app): it counts returns itself, so starts do not.
         val c = Controller(); val h = Home(emptyMap())
         val plain = restarts(c, h)
-        repeat(CrashLoopGuard.LOOP_CRASHES * 2) { plain.onLockTaskEntered("com.a") }
+        repeat(CrashLoopGuard.LOOP_CRASHES * 2) { plain.onStarted("com.a") }
         assertTrue(c.homes.isEmpty())
     }
 }

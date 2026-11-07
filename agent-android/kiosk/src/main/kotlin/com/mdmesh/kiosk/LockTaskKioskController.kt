@@ -92,6 +92,20 @@ class LockTaskKioskController(
         }
     }
 
+    /** The restriction is API 28+. */
+    override fun setErrorDialogsQuiet(quiet: Boolean): KioskResult {
+        if (!dpm.isDeviceOwnerApp(admin.packageName) || Build.VERSION.SDK_INT < Build.VERSION_CODES.P) {
+            return KioskResult.Unsupported
+        }
+        return runGuarded {
+            if (quiet) {
+                dpm.addUserRestriction(admin, UserManager.DISALLOW_SYSTEM_ERROR_DIALOGS)
+            } else {
+                dpm.clearUserRestriction(admin, UserManager.DISALLOW_SYSTEM_ERROR_DIALOGS)
+            }
+        }
+    }
+
     override fun isLocked(context: Context): Boolean {
         val am = context.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager
             ?: return false

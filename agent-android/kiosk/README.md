@@ -97,12 +97,18 @@ loop. `:app` is responsible for (done there, not here):
    bar) over it, as it does over any other app's window. The launcher still shows its splash
    until the app is installed, then hands HOME over (`KioskApplier.handHomeToPinnedApp`).
 
-   Android reopens a HOME app that closes, so the launcher is not always underneath to count
-   the returns. A HOME app that crashes leaves lock task and enters it again when reopened, and
-   `AdminReceiver.onLockTaskModeEntering` passes each entry to `PinnedHomeRestarts`, which
-   counts it on the same `CrashLoopGuard`. Once it trips, `KioskApplier.takeHomeBack` gives
-   HOME back to the launcher, which holds on its "App closed" screen; "Open again" hands HOME
-   to the app once more.
+   Android restarts a HOME app that crashes in place, in its own task ("Not force finishing home
+   activity"), so the launcher is not underneath to count the returns and lock task never ends.
+   Two things keep the guard working:
+
+   - every kiosk holds Android's crash dialogs back (`setErrorDialogsQuiet`,
+     `DISALLOW_SYSTEM_ERROR_DIALOGS`, lifted on exit), so a crashed app is closed and restarted
+     instead of waiting behind "has stopped" for a tap nobody makes;
+   - the app reports each start through the local API (`kiosk.started`), and
+     `PinnedHomeRestarts` counts it on the same `CrashLoopGuard`. Once it trips,
+     `KioskApplier.takeHomeBack` gives HOME back to the launcher, which holds on its "App
+     closed" screen; "Open again" hands HOME to the app once more. An app that does not report
+     its starts has no crash-loop guard in this mode.
 
    With the app as HOME the launcher's screen is not shown, so neither is its on-device exit
    (the 7-tap corner or the exit button): such a kiosk is ended from the server.

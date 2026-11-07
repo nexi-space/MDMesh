@@ -52,7 +52,10 @@ class KioskApplier(
         // Already in this kiosk: no re-entry or relaunch, but re-assert the volume lock and the Safe Mode block (either
         // may have failed before).
         val current = store.load()
-        if (current == p && isLockTaskActive()) return applySafeMode(applyVolume(p, KioskResult.Ok))
+        if (current == p && isLockTaskActive()) {
+            kiosk.setErrorDialogsQuiet(true)
+            return applySafeMode(applyVolume(p, KioskResult.Ok))
+        }
         home.setClaimEnabled(true)
         val pinnedHome = pinnedHomeOf(p)
         return when (val r = lockTo(p, pinnedHome ?: homeComponent)) {
@@ -61,6 +64,9 @@ class KioskApplier(
                 // volume lock is reported (the config document is then not persisted and is re-applied), and the
                 // short-circuit above re-asserts it without relaunching the kiosk.
                 store.save(p)
+                // Best effort, like the volume lock on exit: nobody is at a kiosk to answer a crash dialog, so a
+                // crashed app is closed and reopened (and counted, PinnedHomeRestarts) instead of waiting behind one.
+                kiosk.setErrorDialogsQuiet(true)
                 home.hideOtherLaunchers(p.kioskApps())
                 if (pinnedHome == null) home.showLauncher() else home.showPinnedHome()
                 applySafeMode(applyVolume(p, r))
@@ -168,6 +174,7 @@ class KioskApplier(
         val r = kiosk.exit()
         if (r != KioskResult.Ok && !force) return r
         kiosk.setVolumeLocked(false) // best effort: lift the kiosk's volume lock (and its mute)
+        kiosk.setErrorDialogsQuiet(false) // best effort: crash dialogs show again
         store.save(null)
         safeModeSetter.set(inKiosk = false) // best effort, like the volume lock
         if (handBackHome) {

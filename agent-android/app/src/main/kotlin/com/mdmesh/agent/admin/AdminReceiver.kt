@@ -10,14 +10,9 @@ import android.os.PersistableBundle
 import android.os.UserManager
 import com.mdmesh.agent.service.CheckInService
 import com.mdmesh.core.config.ServerConfigStore
-import com.mdmesh.core.kiosk.PinnedHomeRestarts
 import com.mdmesh.core.location.LocationPermissions
 import com.mdmesh.core.store.EnrollTokenStore
 import com.mdmesh.core.sync.CheckInWorker
-import dagger.hilt.EntryPoint
-import dagger.hilt.InstallIn
-import dagger.hilt.android.EntryPointAccessors
-import dagger.hilt.components.SingletonComponent
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -76,33 +71,10 @@ class AdminReceiver : DeviceAdminReceiver() {
         }
     }
 
-    /**
-     * Entering kiosk: block other apps/services from drawing toasts/dialogs over the kiosk. A pinned app that is HOME
-     * enters lock task again each time Android reopens it, which is how its restarts are counted
-     * ([PinnedHomeRestarts]).
-     */
+    /** Entering kiosk: block other apps/services from drawing toasts/dialogs over the kiosk. */
     override fun onLockTaskModeEntering(context: Context, intent: Intent, pkg: String) {
         super.onLockTaskModeEntering(context, intent, pkg)
         setCreateWindowsRestriction(context, restrict = true)
-        val pending = goAsync()
-        CoroutineScope(Dispatchers.IO).launch {
-            try {
-                runCatching {
-                    EntryPointAccessors.fromApplication(context.applicationContext, KioskEntryPoint::class.java)
-                        .pinnedHomeRestarts()
-                        .onLockTaskEntered(pkg)
-                }
-            } finally {
-                pending.finish()
-            }
-        }
-    }
-
-    /** The receiver is not injected (the platform creates it), so the graph is reached through this. */
-    @EntryPoint
-    @InstallIn(SingletonComponent::class)
-    interface KioskEntryPoint {
-        fun pinnedHomeRestarts(): PinnedHomeRestarts
     }
 
     /** Leaving kiosk: allow overlays again. */

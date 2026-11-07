@@ -1,6 +1,7 @@
 package com.mdmesh.core.localapi
 
 import com.mdmesh.core.localapi.LocalApi.Companion.DESCRIBE
+import com.mdmesh.core.localapi.LocalApi.Companion.KIOSK_STARTED
 import com.mdmesh.core.localapi.LocalApi.Companion.WIFI_CONNECT
 import com.mdmesh.core.localapi.LocalApi.Companion.WIFI_DISCONNECT
 import com.mdmesh.core.localapi.LocalApi.Companion.WIFI_FORGET
@@ -125,8 +126,29 @@ class LocalApiTest {
         assertNull(f[LocalApiKeys.REASON])
         val all = listOf(
             DESCRIBE, WIFI_CONNECT, WIFI_SAVED, WIFI_FORGET, WIFI_SET_AUTO_JOIN, WIFI_DISCONNECT, WIFI_SET_RADIO,
+            KIOSK_STARTED,
         )
         assertEquals(all, f[LocalApiKeys.METHODS])
+    }
+
+    // --- kiosk.started ---
+
+    @Test fun `kiosk_started from the pinned app is passed on, and changes nothing else`() {
+        val started = mutableListOf<String>()
+        val api = LocalApi(platform, wifi, wifi, events) { started += it }
+        val r = runBlocking { api.call(KIOSK_STARTED, APP, LocalApiArgs(emptyMap())) }
+        assertCode(LocalApiCode.OK, r)
+        assertEquals(listOf(APP), started)
+        assertTrue(wifi.calls.isEmpty())
+        assertTrue("a start is not an audited change: ${events.recorded}", events.recorded.isEmpty())
+    }
+
+    @Test fun `kiosk_started from any other app is refused and not passed on`() {
+        val started = mutableListOf<String>()
+        val api = LocalApi(platform, wifi, wifi, events) { started += it }
+        val r = runBlocking { api.call(KIOSK_STARTED, "com.android.shell", LocalApiArgs(emptyMap())) }
+        assertCode(LocalApiCode.UNAUTHORIZED, r)
+        assertTrue(started.isEmpty())
     }
 
     @Test fun `describe answers an unauthorized caller too, with the reason`() {

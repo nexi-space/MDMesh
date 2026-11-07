@@ -399,10 +399,12 @@ object AgentModule {
         handle: DpmHandle,
         kiosk: KioskStateStore,
         events: EventSink,
+        restarts: PinnedHomeRestarts,
     ): LocalApi = LocalApi(
         platform = AndroidLocalApiPlatform(context, handle, kiosk),
         radio = AndroidWifiRadio.from(context),
         networks = AndroidWifiNetworks.from(context),
         events = events,
+        onPinnedAppStarted = restarts::onStarted,
     )
 }

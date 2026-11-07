@@ -8,8 +8,9 @@ import kotlinx.coroutines.sync.withLock
 
 /**
  * The agent's local, offline API: what the pinned kiosk app may ask the Device Owner to do for it, with no server
- * involved. Today that is Wi-Fi. Since Android 10 an ordinary app cannot add, enable, disable or remove saved networks
- * or switch the radio, and a kiosk tablet needs exactly that when it has no network at all.
+ * involved. Today that is Wi-Fi, and the app reporting each start ([KIOSK_STARTED]). Since Android 10 an ordinary
+ * app cannot add, enable, disable or remove saved networks or switch the radio, and a kiosk tablet needs exactly that
+ * when it has no network at all.
  *
  * Android-free: the content provider in `:app` copies the call's Bundle into [LocalApiArgs] and [LocalApiReply.fields]
  * back into a Bundle, so every decision here runs as a plain JVM test.
@@ -27,6 +28,8 @@ class LocalApi(
     radio: WifiRadio?,
     networks: WifiNetworks?,
     private val events: EventSink,
+    /** The pinned app reported a start (`kiosk.started`); it is the package. Last, so it can be a trailing lambda. */
+    private val onPinnedAppStarted: suspend (String) -> Unit = {},
 ) {
     /** Null on a device without Wi-Fi: every `wifi.*` method is then [LocalApiCode.UNSUPPORTED]. */
     private val wifi: WifiBridge? = if (radio != null && networks != null) WifiBridge(radio, networks) else null
@@ -54,7 +57,13 @@ class LocalApi(
     private suspend fun route(method: String, caller: String?, args: LocalApiArgs): LocalApiReply = when (method) {
         DESCRIBE -> describe(denial(caller))
         !in METHODS -> LocalApiReply.unsupported("unknown method")
+        KIOSK_STARTED -> denial(caller)?.let(::unauthorized) ?: started(checkNotNull(caller))
         else -> denial(caller)?.let(::unauthorized) ?: wifiCall(method, args)
+    }
+
+    private suspend fun started(caller: String): LocalApiReply {
+        onPinnedAppStarted(caller)
+        return LocalApiReply.ok("noted")
     }
 
     private fun wifiCall(method: String, args: LocalApiArgs): LocalApiReply {
@@ -108,9 +117,17 @@ class LocalApi(
         const val WIFI_DISCONNECT = "wifi.disconnect"
         const val WIFI_SET_RADIO = "wifi.setRadio"
 
+        /**
+         * The pinned app started (its main screen was created), reported each time. While it is HOME, every start
+         * counts towards the agent's crash-loop guard ([com.mdmesh.core.kiosk.PinnedHomeRestarts]). Not audited:
+         * it changes nothing on the device.
+         */
+        const val KIOSK_STARTED = "kiosk.started"
+
         /** Every method, as `describe` lists them. */
         val METHODS: List<String> = listOf(
             DESCRIBE, WIFI_CONNECT, WIFI_SAVED, WIFI_FORGET, WIFI_SET_AUTO_JOIN, WIFI_DISCONNECT, WIFI_SET_RADIO,
+            KIOSK_STARTED,
         )
 
         /** The methods that change something, recorded in the event log as `localApi` `<method> <code>`. */

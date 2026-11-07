@@ -182,6 +182,7 @@ Every reply has `ok: Boolean`, `code: String`, `message: String` (never the pass
 | `wifi.setAutoJoin` | `ssid`, `enabled: Boolean` | `enableNetwork(id, true)`, or `disableNetwork(id)` and leave it if Wi-Fi is on it. Credentials stay. | — |
 | `wifi.disconnect` | — | `disconnect()`. | — |
 | `wifi.setRadio` | `enabled: Boolean` | `setWifiEnabled(enabled)`. | — |
+| `kiosk.started` | — | The app reports that it started (its main screen was created), each time. While it is HOME (a single-app kiosk whose app is a HOME app, see `kiosk/README.md`), every start counts towards the crash-loop guard. Changes nothing on the device; not in the event log. | — |
 
 | Code | Meaning |
 |------|---------|

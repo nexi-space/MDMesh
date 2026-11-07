@@ -28,6 +28,9 @@ class KioskApplierTest {
         val volume = mutableListOf<Boolean>()
         /** Every setSafeModeBlocked call, in order. */
         val safeMode = mutableListOf<Boolean>()
+        /** Every setErrorDialogsQuiet call, in order. */
+        val quiet = mutableListOf<Boolean>()
+        override fun setErrorDialogsQuiet(quiet: Boolean): KioskResult { this.quiet += quiet; return KioskResult.Ok }
         var safeModeResult: KioskResult = KioskResult.Ok
         override fun setSafeModeBlocked(blocked: Boolean): KioskResult { safeMode += blocked; return safeModeResult }
         /** Every enter call's HOME, in order. */
@@ -386,5 +389,25 @@ class KioskApplierTest {
         assertFalse(a.handHomeToPinnedApp())
         assertFalse(a.takeHomeBack())
         assertTrue(c.homes.isEmpty()); assertTrue(h.log.isEmpty())
+    }
+
+    @Test fun `a kiosk holds crash dialogs back while it is on, and lifts that when it ends`() = runTest {
+        val c = FakeController(KioskResult.Ok); val store = InMemoryKioskStateStore()
+        val a = KioskApplier(c, store, FakeHome(), home) { false }
+        a.enter(single)
+        assertEquals(listOf(true), c.quiet)
+        a.exit()
+        assertEquals(listOf(true, false), c.quiet)
+    }
+    @Test fun `staying in kiosk re-asserts that crash dialogs are held back`() = runTest {
+        val c = FakeController(KioskResult.Ok); val store = InMemoryKioskStateStore(); store.save(single)
+        KioskApplier(c, store, FakeHome(), home) { true }.enter(single)
+        assertEquals(listOf(true), c.quiet)
+        assertTrue("no re-entry", c.enters.isEmpty())
+    }
+    @Test fun `a failed entry does not hold crash dialogs back on a device outside kiosk`() = runTest {
+        val c = FakeController(KioskResult.Failed("dpm"))
+        KioskApplier(c, InMemoryKioskStateStore(), FakeHome(), home) { false }.enter(single)
+        assertTrue(c.quiet.isEmpty())
     }
 }
