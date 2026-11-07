@@ -30,8 +30,10 @@ class KioskApplierTest {
         val safeMode = mutableListOf<Boolean>()
         var safeModeResult: KioskResult = KioskResult.Ok
         override fun setSafeModeBlocked(blocked: Boolean): KioskResult { safeMode += blocked; return safeModeResult }
+        /** Every enter call's HOME, in order. */
+        val homes = mutableListOf<ComponentName>()
         override fun enter(homeComponent: ComponentName, allowedPackages: List<String>, features: Int): KioskResult {
-            entered = allowedPackages; enters += allowedPackages
+            entered = allowedPackages; enters += allowedPackages; homes += homeComponent
             return if (allowedPackages == failFor) KioskResult.Failed("dpm") else enterResult
         }
         override fun exit(): KioskResult { exited = true; return exitResult }
@@ -39,11 +41,14 @@ class KioskApplierTest {
         override fun isLocked(context: android.content.Context): Boolean = false
         override fun allowedPackages(): List<String> = entered ?: emptyList()
     }
-    private class FakeHome : KioskHomeSwitch {
+    /** [homeApps]: the HOME activity each package declares. */
+    private class FakeHome(private val homeApps: Map<String, ComponentName> = emptyMap()) : KioskHomeSwitch {
         val log = mutableListOf<String>()
         override fun setClaimEnabled(enabled: Boolean) { log += "claim:$enabled" }
         override fun showLauncher() { log += "launcher" }
         override fun showOemHome() { log += "oem" }
+        override fun homeActivityOf(packageName: String): ComponentName? = homeApps[packageName]
+        override fun showPinnedHome() { log += "pinned-home" }
     }
     /** Also records the other launchers being hidden and restored. */
     private class LaunchersHome : KioskHomeSwitch {
@@ -307,5 +312,79 @@ class KioskApplierTest {
         assertEquals(KioskResult.Ok, a.exit())
         assertFalse(a.isPersisted())
         assertEquals(listOf("claim:false", "oem"), h.log)
+    }
+
+    /** The HOME each enter claimed, by identity: ComponentName.equals is not available in JVM tests. */
+    private fun assertHomes(actual: List<ComponentName>, vararg expected: ComponentName) {
+        assertEquals(expected.size, actual.size)
+        expected.zip(actual).forEach { (e, a) -> org.junit.Assert.assertSame(e, a) }
+    }
+
+    private val appHome = ComponentName("com.a", "com.a.MainActivity")
+    private val single = KioskApplyPayload(mode = "single", pinPackage = "com.a", allowedPackages = listOf("com.a"))
+
+    @Test fun `a single-app kiosk whose app is a HOME app makes that app HOME and opens it`() = runTest {
+        val c = FakeController(KioskResult.Ok); val h = FakeHome(mapOf("com.a" to appHome))
+        assertEquals(KioskResult.Ok, KioskApplier(c, InMemoryKioskStateStore(), h, home) { false }.enter(single))
+        assertHomes(c.homes, appHome)
+        assertEquals(listOf("claim:true", "pinned-home"), h.log)
+    }
+    @Test fun `a single-app kiosk whose app is not a HOME app keeps the agent's launcher as HOME`() = runTest {
+        val c = FakeController(KioskResult.Ok); val h = FakeHome()
+        KioskApplier(c, InMemoryKioskStateStore(), h, home) { false }.enter(single)
+        assertHomes(c.homes, home)
+        assertEquals(listOf("claim:true", "launcher"), h.log)
+    }
+    @Test fun `a launcher kiosk keeps the agent's launcher as HOME, whatever its apps are`() = runTest {
+        val c = FakeController(KioskResult.Ok); val h = FakeHome(mapOf("com.a" to appHome))
+        KioskApplier(c, InMemoryKioskStateStore(), h, home) { false }
+            .enter(KioskApplyPayload(mode = "launcher", pinPackage = "com.a", allowedPackages = listOf("com.a")))
+        assertHomes(c.homes, home)
+    }
+    @Test fun `a failed entry on a device in kiosk keeps the HOME that kiosk had`() = runTest {
+        val c = FakeController(KioskResult.Ok); val h = FakeHome(mapOf("com.a" to appHome))
+        val store = InMemoryKioskStateStore(); store.save(single)
+        c.failFor = listOf("com.b")
+        KioskApplier(c, store, h, home) { false }
+            .enter(KioskApplyPayload(mode = "single", pinPackage = "com.b", allowedPackages = listOf("com.b")))
+        assertHomes(c.homes, home, appHome)
+        assertEquals(single, store.load())
+    }
+    @Test fun `the pinned app is HOME only while it is the saved single-app kiosk's HOME app`() = runTest {
+        val store = InMemoryKioskStateStore()
+        val a = KioskApplier(FakeController(KioskResult.Ok), store, FakeHome(mapOf("com.a" to appHome)), home) { false }
+        assertFalse(a.isPinnedHome("com.a"))
+        store.save(single)
+        assertTrue(a.isPinnedHome("com.a"))
+        assertFalse(a.isPinnedHome("com.b"))
+        val plain = KioskApplier(FakeController(KioskResult.Ok), store, FakeHome(), home) { false }
+        assertFalse(plain.isPinnedHome("com.a"))
+    }
+    @Test fun `taking HOME back claims the agent's launcher and shows it, and the kiosk stays on`() = runTest {
+        val c = FakeController(KioskResult.Ok); val h = FakeHome(mapOf("com.a" to appHome))
+        val store = InMemoryKioskStateStore(); store.save(single)
+        assertTrue(KioskApplier(c, store, h, home) { true }.takeHomeBack())
+        assertHomes(c.homes, home)
+        assertEquals(listOf(listOf("com.a")), c.enters)
+        assertEquals(listOf("launcher"), h.log)
+        assertEquals(single, store.load())
+        assertFalse(c.exited)
+    }
+    @Test fun `HOME is handed to the pinned app only when it is a HOME app`() = runTest {
+        val c = FakeController(KioskResult.Ok); val store = InMemoryKioskStateStore(); store.save(single)
+        val plainHome = FakeHome()
+        assertFalse(KioskApplier(c, store, plainHome, home) { true }.handHomeToPinnedApp())
+        assertTrue(c.homes.isEmpty()); assertTrue(plainHome.log.isEmpty())
+        val h = FakeHome(mapOf("com.a" to appHome))
+        assertTrue(KioskApplier(c, store, h, home) { true }.handHomeToPinnedApp())
+        assertHomes(c.homes, appHome)
+        assertEquals(listOf("pinned-home"), h.log)
+    }
+    @Test fun `nothing is handed over or taken back without a saved kiosk`() = runTest {
+        val c = FakeController(KioskResult.Ok); val h = FakeHome(mapOf("com.a" to appHome))
+        val a = KioskApplier(c, InMemoryKioskStateStore(), h, home) { false }
+        assertFalse(a.handHomeToPinnedApp())
+        assertFalse(a.takeHomeBack())
+        assertTrue(c.homes.isEmpty()); assertTrue(h.log.isEmpty())
     }
 }

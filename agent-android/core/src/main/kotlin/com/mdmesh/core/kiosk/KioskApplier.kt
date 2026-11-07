@@ -27,6 +27,8 @@ import kotlinx.coroutines.sync.withLock
  * (`kiosk.enter`/`kiosk.exit`, `config.apply` and its boot re-apply, the launcher's exits, agent start). Otherwise
  * the boot-time release could read "no kiosk", then clear the volume lock a concurrent enter had just set.
  */
+// Every change to the lock-task policy and to HOME runs here, under one mutex; split up, they could interleave.
+@Suppress("TooManyFunctions")
 class KioskApplier(
     private val kiosk: KioskController,
     private val store: KioskStateStore,
@@ -52,14 +54,15 @@ class KioskApplier(
         val current = store.load()
         if (current == p && isLockTaskActive()) return applySafeMode(applyVolume(p, KioskResult.Ok))
         home.setClaimEnabled(true)
-        return when (val r = lockTo(p)) {
+        val pinnedHome = pinnedHomeOf(p)
+        return when (val r = lockTo(p, pinnedHome ?: homeComponent)) {
             KioskResult.Ok -> {
                 // The device IS in kiosk now, so the state says so even if the volume lock fails below: a failed
                 // volume lock is reported (the config document is then not persisted and is re-applied), and the
                 // short-circuit above re-asserts it without relaunching the kiosk.
                 store.save(p)
                 home.hideOtherLaunchers(p.kioskApps())
-                home.showLauncher()
+                if (pinnedHome == null) home.showLauncher() else home.showPinnedHome()
                 applySafeMode(applyVolume(p, r))
             }
             else -> {
@@ -68,7 +71,7 @@ class KioskApplier(
                 } else {
                     // A device in kiosk stays in it: the failed entry may already have replaced the allowlist, so
                     // put back the kiosk it had, and keep HOME, or a restart would boot to the phone's own launcher.
-                    lockTo(current)
+                    lockTo(current, pinnedHomeOf(current) ?: homeComponent)
                     applySafeMode(r) // its result is r again, already Failed: the device keeps its kiosk and the block
                 }
                 r
@@ -76,14 +79,51 @@ class KioskApplier(
         }
     }
 
-    private fun lockTo(p: KioskApplyPayload): KioskResult {
+    /**
+     * The pinned app's HOME activity, when kiosk [p] is single-app and its app declares one: that app is then HOME
+     * itself. Android treats it as the home screen, so Back has nothing to leave to, and Android 16 does not draw its
+     * app handle (the desktop-windowing "…" bar) over it, as it does over any other app. Null: the agent's launcher is
+     * HOME, and opens the app.
+     */
+    private fun pinnedHomeOf(p: KioskApplyPayload): ComponentName? =
+        p.pinPackage?.takeIf { p.mode == "single" }?.let(home::homeActivityOf)
+
+    /** True when [pkg] is the saved kiosk's pinned app and is HOME in it ([pinnedHomeOf]). */
+    suspend fun isPinnedHome(pkg: String): Boolean =
+        store.load()?.let { it.pinPackage == pkg && pinnedHomeOf(it) != null } ?: false
+
+    /**
+     * Make the saved kiosk's pinned app HOME, and bring it forward: the launcher's hand-over once the app is installed,
+     * or when someone opens it again after a hold. False, and nothing changes, when it is not a HOME app
+     * ([pinnedHomeOf]), no kiosk is saved, or the claim fails.
+     */
+    suspend fun handHomeToPinnedApp(): Boolean = mutex.withLock {
+        val p = store.load() ?: return false
+        val pinnedHome = pinnedHomeOf(p) ?: return false
+        if (lockTo(p, pinnedHome) != KioskResult.Ok) return false
+        home.showPinnedHome()
+        true
+    }
+
+    /**
+     * The pinned app is HOME and keeps closing ([PinnedHomeRestarts]): give HOME back to the agent's launcher, which
+     * holds on its own screen instead of reopening it ([com.mdmesh.kiosk.KioskReturnPolicy]). The kiosk stays on.
+     */
+    suspend fun takeHomeBack(): Boolean = mutex.withLock {
+        val p = store.load() ?: return false
+        if (lockTo(p, homeComponent) != KioskResult.Ok) return false
+        home.showLauncher()
+        true
+    }
+
+    private fun lockTo(p: KioskApplyPayload, kioskHome: ComponentName): KioskResult {
         val features = lockTaskFeatures(
             KioskToggles(
                 home = p.features.home, recents = p.features.recents, notifications = p.features.notifications,
                 systemInfo = p.features.systemInfo, keyguard = p.features.keyguard, lockButtons = p.features.lockButtons,
             ),
         )
-        return kiosk.enter(homeComponent, p.kioskApps(), features)
+        return kiosk.enter(kioskHome, p.kioskApps(), features)
     }
 
     /** In kiosk: block Safe Mode unless the configuration allows it ([safeModeBlocked]). */

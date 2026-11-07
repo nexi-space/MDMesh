@@ -1,10 +1,12 @@
 package com.mdmesh.core.kiosk
 
+import android.app.ActivityOptions
 import android.app.admin.DevicePolicyManager
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.os.Build
 
 /** The Android side effects of entering/leaving kiosk, behind an interface so the orchestration is unit-testable. */
 interface KioskHomeSwitch {
@@ -26,6 +28,15 @@ interface KioskHomeSwitch {
 
     /** Unhide the launchers [hideOtherLaunchers] hid, and enable the agent's app again. Does nothing by default. */
     fun restoreOtherLaunchers() = Unit
+
+    /**
+     * The HOME activity [packageName] declares, or null when it declares none. A single-app kiosk whose app has one
+     * makes that app HOME ([KioskApplier]). Null by default: the agent's launcher stays HOME.
+     */
+    fun homeActivityOf(packageName: String): ComponentName? = null
+
+    /** Bring the pinned app forward as HOME, in lock task. Brings the kiosk launcher forward by default. */
+    fun showPinnedHome() = showLauncher()
 }
 
 /**
@@ -53,6 +64,36 @@ class AndroidKioskHomeSwitch(
     }
     override fun showOemHome() {
         runCatching { context.startActivity(Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
+    }
+
+    /**
+     * Only a filter that also carries `CATEGORY_DEFAULT` counts: without it the HOME intent never resolves to the
+     * activity. API 28+, where [showPinnedHome] can start the app in lock task whether or not it asks to be.
+     */
+    override fun homeActivityOf(packageName: String): ComponentName? {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P) return null
+        val intent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME).setPackage(packageName)
+        return runCatching { context.packageManager.queryIntentActivities(intent, PackageManager.MATCH_DEFAULT_ONLY) }
+            .getOrNull()
+            ?.firstOrNull()
+            ?.activityInfo
+            ?.let { ComponentName(it.packageName, it.name) }
+    }
+
+    /**
+     * The HOME intent with no component, so Android starts the app as HOME (not as an app opened over HOME), and in
+     * lock task: the kiosk's allowlist names it.
+     */
+    override fun showPinnedHome() {
+        val home = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        runCatching {
+            val options = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                ActivityOptions.makeBasic().setLockTaskEnabled(true).toBundle()
+            } else {
+                null
+            }
+            context.startActivity(home, options)
+        }
     }
 
     /**

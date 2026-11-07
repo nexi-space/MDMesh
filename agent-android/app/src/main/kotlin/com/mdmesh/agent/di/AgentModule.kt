@@ -41,6 +41,7 @@ import com.mdmesh.core.kiosk.AndroidKioskHomeSwitch
 import com.mdmesh.core.kiosk.AndroidUserSetup
 import com.mdmesh.core.kiosk.ConfiguredSafeModeSetting
 import com.mdmesh.core.kiosk.KioskApplier
+import com.mdmesh.core.kiosk.PinnedHomeRestarts
 import com.mdmesh.core.command.handlers.PolicyApplyHandler
 import com.mdmesh.core.device.AppInventoryCollector
 import com.mdmesh.core.device.HardwareIdCollector
@@ -225,6 +226,12 @@ object AgentModule {
     @Provides
     @Singleton
     fun provideCrashLoopGuard(store: FaultStore): CrashLoopGuard = CrashLoopGuard(store)
+
+    /** The same guard the kiosk launcher holds with, so a hold it shows and one this trips are the same. */
+    @Provides
+    @Singleton
+    fun providePinnedHomeRestarts(applier: KioskApplier, guard: CrashLoopGuard): PinnedHomeRestarts =
+        PinnedHomeRestarts(applier, guard)
 
     @Provides
     @Singleton

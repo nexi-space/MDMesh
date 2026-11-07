@@ -200,7 +200,9 @@ class KioskLauncherActivity : ComponentActivity() {
         val app = checkNotNull(pkg)
         opening = lifecycleScope.launch {
             withContext(Dispatchers.IO) { KioskAppPermissions.grant(applicationContext, admin, app) }
-            runCatching { startActivity(intent) }
+            // An app that is a HOME app becomes HOME and opens as the home screen (KioskApplier). This launcher stays
+            // underneath: it holds the lock task it started, and a crash returns here and is counted, as before.
+            if (!applier.handHomeToPinnedApp()) runCatching { startActivity(intent) }
         }
     }
 

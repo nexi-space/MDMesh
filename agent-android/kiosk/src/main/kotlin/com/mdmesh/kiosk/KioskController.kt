@@ -50,7 +50,8 @@ interface KioskController {
      * Allowlists [allowedPackages] (plus the agent's own package, so the kiosk
      * launcher itself can run), enables the standard lock-task UI features on
      * API 28+, and registers [homeComponent] as the persistent preferred HOME
-     * activity so the agent owns the home button.
+     * activity, replacing the HOME claim made before: the agent's kiosk launcher,
+     * or a single-app kiosk's own HOME app.
      *
      * This configures the device-level policy. The dedicated kiosk activity still
      * calls `Activity.startLockTask()` itself once it is in the foreground (it is
@@ -61,7 +62,7 @@ interface KioskController {
     fun enter(homeComponent: ComponentName, allowedPackages: List<String>, features: Int): KioskResult
 
     /**
-     * Exit lock-task mode: clears the allowlist, releases the persistent HOME claim,
+     * Exit lock-task mode: clears the allowlist, releases the persistent HOME claim (whichever package holds it),
      * and resets lock-task features to the framework default.
      */
     fun exit(): KioskResult

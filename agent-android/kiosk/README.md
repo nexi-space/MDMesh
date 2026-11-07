@@ -33,9 +33,11 @@ Constructed directly with `(dpm: DevicePolicyManager, admin: ComponentName)` —
   `setLockTaskPackages` (allowlist + the agent's own package), `setLockTaskFeatures(features)`
   on API 28+ (`features` is a `LOCK_TASK_FEATURE_*` bitmask, usually from
   `lockTaskFeatures(KioskToggles)`), and `addPersistentPreferredActivity` for
-  `ACTION_MAIN` + `CATEGORY_HOME` + `CATEGORY_DEFAULT` so the agent owns HOME.
-- **`exit()`** — clears the allowlist, `clearPackagePersistentPreferredActivities`,
-  sets lock-task features to `LOCK_TASK_FEATURE_NONE` (API 28+).
+  `ACTION_MAIN` + `CATEGORY_HOME` + `CATEGORY_DEFAULT` so `homeComponent` owns HOME: the
+  agent's kiosk launcher, or a single-app kiosk's own HOME app (below). The HOME claim made
+  before is released first, whichever package it named (the agent's or an allowlisted app's).
+- **`exit()`** — releases the HOME claim the same way, clears the allowlist, and sets
+  lock-task features to `LOCK_TASK_FEATURE_NONE` (API 28+).
 - **`isLocked(context)`** — `ActivityManager.lockTaskModeState == LOCK_TASK_MODE_LOCKED`.
 - **`allowedPackages()`** — `getLockTaskPackages(admin)`.
 
@@ -86,6 +88,24 @@ loop. `:app` is responsible for (done there, not here):
    calls `registerFault()` each time the pinned single app returns to HOME; once
    `isCrashLoopDetected()` trips, it stops reopening the app and holds in kiosk on an "App closed" screen
    (`KioskReturnPolicy`), so a crashing app can't loop. Kiosk stays on: only the admin-PIN exit or the server ends it.
+
+5. **A single-app kiosk whose app is a HOME app** — when the pinned app declares a HOME activity
+   (`ACTION_MAIN` + `CATEGORY_HOME` + `CATEGORY_DEFAULT`, API 28+), `KioskApplier` makes that
+   activity HOME instead of the agent's launcher, and starts it through the HOME intent with
+   `ActivityOptions.setLockTaskEnabled(true)`. Android then runs it as the home screen: Back has
+   nothing to leave to, and Android 16 does not draw its desktop-windowing app handle (the "…"
+   bar) over it, as it does over any other app's window. The launcher still shows its splash
+   until the app is installed, then hands HOME over (`KioskApplier.handHomeToPinnedApp`).
+
+   Android reopens a HOME app that closes, so the launcher is not always underneath to count
+   the returns. A HOME app that crashes leaves lock task and enters it again when reopened, and
+   `AdminReceiver.onLockTaskModeEntering` passes each entry to `PinnedHomeRestarts`, which
+   counts it on the same `CrashLoopGuard`. Once it trips, `KioskApplier.takeHomeBack` gives
+   HOME back to the launcher, which holds on its "App closed" screen; "Open again" hands HOME
+   to the app once more.
+
+   With the app as HOME the launcher's screen is not shown, so neither is its on-device exit
+   (the 7-tap corner or the exit button): such a kiosk is ended from the server.
 
 ## Crash-loop algorithm
 

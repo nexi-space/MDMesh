@@ -12,9 +12,12 @@ import android.os.UserManager
  * Real [KioskController] backed by the native lock-task APIs.
  *
  * Constructed directly with a [DevicePolicyManager] and the admin [ComponentName]
- * (no `DpmHandle` indirection). The agent's own package name is required to keep
- * the kiosk launcher on the allowlist and to scope the persistent-HOME claim; it is
- * resolved from the [Context] passed to [enter]/[exit].
+ * (no `DpmHandle` indirection). The agent's own package, the admin's, stays on the
+ * allowlist so the kiosk launcher can run.
+ *
+ * HOME is claimed for the agent's launcher or for a single-app kiosk's own HOME app,
+ * so each claim first releases the one made before, whichever package it named, and
+ * [exit] releases it too.
  *
  * SDK floors:
  * - lock-task allowlisting / persistent HOME: API 21 (module minSdk is 24, so always met).
@@ -31,9 +34,11 @@ class LockTaskKioskController(
 ) : KioskController {
 
     override fun enter(homeComponent: ComponentName, allowedPackages: List<String>, features: Int): KioskResult {
-        val ownPackage = homeComponent.packageName
+        val ownPackage = admin.packageName
         if (!dpm.isDeviceOwnerApp(ownPackage)) return KioskResult.Unsupported
         return runGuarded {
+            // Before the allowlist is replaced: it names the app that may hold HOME now.
+            releaseHomeClaims(ownPackage)
             // Own package must stay allowlisted so the kiosk launcher can run.
             val allowlist = (allowedPackages + ownPackage).distinct().toTypedArray()
             dpm.setLockTaskPackages(admin, allowlist)
@@ -42,7 +47,7 @@ class LockTaskKioskController(
                 dpm.setLockTaskFeatures(admin, features)
             }
 
-            // Claim HOME so pressing home returns to the kiosk launcher.
+            // Claim HOME: pressing home returns to the kiosk launcher, or to the kiosk's own HOME app.
             val homeFilter = IntentFilter(android.content.Intent.ACTION_MAIN).apply {
                 addCategory(android.content.Intent.CATEGORY_HOME)
                 addCategory(android.content.Intent.CATEGORY_DEFAULT)
@@ -51,16 +56,13 @@ class LockTaskKioskController(
         }
     }
 
-    /**
-     * [exit] needs the agent's own package to release the persistent-HOME claim.
-     * Resolve it from the admin component, which is always in the agent's package.
-     */
+    /** The agent's own package is the admin component's. */
     override fun exit(): KioskResult {
         val ownPackage = admin.packageName
         if (!dpm.isDeviceOwnerApp(ownPackage)) return KioskResult.Unsupported
         return runGuarded {
+            releaseHomeClaims(ownPackage) // before the allowlist is cleared, as in enter
             dpm.setLockTaskPackages(admin, emptyArray())
-            dpm.clearPackagePersistentPreferredActivities(admin, ownPackage)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
                 // Reset features to the framework default (only SYSTEM_INFO / status bar).
                 dpm.setLockTaskFeatures(admin, DevicePolicyManager.LOCK_TASK_FEATURE_NONE)
@@ -104,6 +106,16 @@ class LockTaskKioskController(
             dpm.getLockTaskPackages(admin).toList()
         } catch (t: Throwable) {
             emptyList()
+        }
+    }
+
+    /**
+     * Release the HOME claim, whichever package holds it: the agent, or an app on the allowlist (a single-app kiosk's
+     * own HOME app). Only claims this admin made are released.
+     */
+    private fun releaseHomeClaims(ownPackage: String) {
+        (listOf(ownPackage) + allowedPackages()).distinct().forEach {
+            dpm.clearPackagePersistentPreferredActivities(admin, it)
         }
     }
 
