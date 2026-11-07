@@ -105,8 +105,8 @@ class AdminPolicyComplianceActivity : Activity() {
         val quiet = { userSetup.quietUntilComplete(admin) }
         quiet()
         // Then started fresh, it ends on its short path, without the hidden app's pages or a tap (SetupWizardRestart).
-        val restart = SetupWizardRestart(ctx, admin, userSetup)
-        restart.wizardPackage()?.let { wizard ->
+        val restart = SetupWizardRestart(ctx, userSetup)
+        restart.wizard()?.let { wizard ->
             CoroutineScope(Dispatchers.IO).launch { restart.untilComplete(wizard) }
         }
         val missed = EnrollmentHiddenApps.hideAll(packages, hide)
