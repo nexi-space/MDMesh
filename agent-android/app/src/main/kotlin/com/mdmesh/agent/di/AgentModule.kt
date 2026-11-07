@@ -361,6 +361,7 @@ object AgentModule {
 
     @Provides
     @Singleton
+    @Suppress("LongParameterList") // A provider lists what it wires: each is one of ConfigApplier's own parameters.
     fun provideConfigApplier(
         registry: CapabilityRegistry,
         kiosk: KioskApplier,
