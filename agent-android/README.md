@@ -131,7 +131,8 @@ admin extras has the agent turn USB debugging on as it takes over (`EnrollmentDe
 
 The kiosk launcher grants its pinned app every runtime permission it requests before opening it
 (`KioskAppPermissions`): the permission policy's auto-grant leaves camera, microphone and notifications to a prompt
-on Android 16, and nobody is at a kiosk to answer one.
+on Android 16, and nobody is at a kiosk to answer one. Granting is done off the main thread, and only for what the
+app does not hold yet: each grant is a blocking call, and a launcher blocked on it is killed as not responding.
 
 The phone's own launcher never shows on a kiosk device. A check-in batch holding `config.apply` runs its
 `app.install`s last, so the kiosk starts without waiting for a large download, and the kiosk launcher waits on its

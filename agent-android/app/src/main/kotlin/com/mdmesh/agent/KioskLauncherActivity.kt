@@ -91,6 +91,9 @@ class KioskLauncherActivity : ComponentActivity() {
     /** The splash is up because the pinned app is not installed yet (see [launchPinned]). */
     private var waitingForPinned = false
 
+    /** The pinned app's permissions being granted, off the main thread, before it opens (see [launchPinned]). */
+    private var opening: kotlinx.coroutines.Job? = null
+
     /** Opens the pinned app when it is installed after the kiosk started (see [launchPinned]). */
     private val pinnedInstalled = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
@@ -189,9 +192,16 @@ class KioskLauncherActivity : ComponentActivity() {
         }
         waitingForPinned = false
         setContentView(splashView(p))
-        // Before it opens, so it never asks: nobody is at a kiosk to answer (KioskAppPermissions).
-        pkg?.let { KioskAppPermissions.grant(this, AdminReceiver.componentName(this), it) }
-        runCatching { startActivity(intent) }
+        // Granted before it opens, so it never asks (nobody is at a kiosk to answer), and off the main thread: each
+        // grant is a blocking call, and a blocked main thread here is an ANR, which in kiosk kills the agent without a
+        // dialog (KioskAppPermissions). One open at a time: a later call while it runs would only repeat it.
+        if (opening?.isActive == true) return
+        val admin = AdminReceiver.componentName(this)
+        val app = checkNotNull(pkg)
+        opening = lifecycleScope.launch {
+            withContext(Dispatchers.IO) { KioskAppPermissions.grant(applicationContext, admin, app) }
+            runCatching { startActivity(intent) }
+        }
     }
 
     /** The app closed too often: stay in kiosk on the hold screen, without reopening it. */
