@@ -12,8 +12,9 @@ New
 - Kiosk: a QR code can name a full-screen image, under `com.mdmesh.SPLASH_IMAGE_URL` in its admin extras, for the
   kiosk to show while its app loads, so the wait at enrollment carries your branding. Needs agent 0.4.0.
 - Enrollment: a QR code can name system apps for the agent to hide as it takes over, under
-  `com.mdmesh.HIDE_PACKAGES` in its admin extras, so the setup pages and app promoters they add never show. Needs
-  agent 0.4.0.
+  `com.mdmesh.HIDE_PACKAGES` in its admin extras, so the setup pages and app promoters they add never show. If the
+  setup wizard stumbles over a hidden app, no crash dialog shows: error dialogs are held back until setup completes.
+  Needs agent 0.4.0.
 - Audit log: commands sent from a device's page or to selected devices (wipe, lock, PIN reset, kiosk, alert) are
   recorded with who sent them, from which address, to which devices, and the command type. The command's settings are
   not recorded, since they can hold a password. "Install config apps" on a device is recorded too
