@@ -1,5 +1,6 @@
 package com.mdmesh.core.install
 
+import android.util.Log
 import android.annotation.SuppressLint
 import android.app.PendingIntent
 import android.content.Context
@@ -141,6 +142,8 @@ class InstallManager @Inject constructor(
         // part's checksum. All parts install together in one session (step 3).
         val parts = req.apkParts
         val fetched = ArrayList<FetchedApk>(parts.size)
+        val started = System.currentTimeMillis()
+        Log.i(TAG, "install ${req.packageName}: fetching ${parts.size} part(s)")
         try {
             for (part in parts) {
                 val file = runCatching { obtainPart(part) }
@@ -155,8 +158,13 @@ class InstallManager @Inject constructor(
             }
 
             // 3. Create + write EVERY part into ONE session + commit, awaiting the broadcast result.
+            val bytes = fetched.sumOf { it.file.length() }
+            val fetchMs = System.currentTimeMillis() - started
+            Log.i(TAG, "install ${req.packageName}: fetched $bytes bytes in $fetchMs ms, committing")
             val outcome = runCatching { commitInstall(req.packageName, fetched.map { it.file }) }
                 .getOrElse { return InstallOutcome.Failure(null, "install session error: ${it.message}") }
+            val totalMs = System.currentTimeMillis() - started
+            Log.i(TAG, "install ${req.packageName}: ${outcome::class.simpleName} after $totalMs ms")
 
             // 4. Optionally launch the app on success.
             if (outcome is InstallOutcome.Success && req.runAfterInstall) {
@@ -330,6 +338,8 @@ class InstallManager @Inject constructor(
     }
 
     private companion object {
+        const val TAG = "InstallManager"
+
         /** How long a committed session may take to report back before the install counts as failed. */
         const val RESULT_TIMEOUT_MS = 10 * 60_000L
     }

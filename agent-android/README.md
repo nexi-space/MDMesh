@@ -126,6 +126,9 @@ closes the wizard's top page, though, and it reopens its history back to the QR 
 the wizard from scratch (hiding and unhiding its package, then opening HOME), which sends it down its short path to
 its exit, repeated a few times while setup is not complete (`SetupWizardRestart`).
 
+A test enrollment can be followed over adb from its first minute: `com.mdmesh.ENABLE_ADB` set to `"true"` in the QR's
+admin extras has the agent turn USB debugging on as it takes over (`EnrollmentDebugging`). Never in a production QR.
+
 The kiosk launcher grants its pinned app every runtime permission it requests before opening it
 (`KioskAppPermissions`): the permission policy's auto-grant leaves camera, microphone and notifications to a prompt
 on Android 16, and nobody is at a kiosk to answer one.
