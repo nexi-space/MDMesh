@@ -31,7 +31,9 @@ import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import kotlinx.coroutines.flow.distinctUntilChanged
 import com.mdmesh.agent.service.CheckInService
+import com.mdmesh.agent.admin.AdminReceiver
 import com.mdmesh.core.kiosk.KioskApplier
+import com.mdmesh.core.kiosk.KioskAppPermissions
 import com.mdmesh.core.kiosk.KioskSplashImage
 import com.mdmesh.core.store.KioskStateStore
 import com.mdmesh.core.sync.CheckInWorker
@@ -187,6 +189,8 @@ class KioskLauncherActivity : ComponentActivity() {
         }
         waitingForPinned = false
         setContentView(splashView(p))
+        // Before it opens, so it never asks: nobody is at a kiosk to answer (KioskAppPermissions).
+        pkg?.let { KioskAppPermissions.grant(this, AdminReceiver.componentName(this), it) }
         runCatching { startActivity(intent) }
     }
 

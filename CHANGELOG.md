@@ -13,14 +13,16 @@ New
   kiosk to show while its app loads, so the wait at enrollment carries your branding. Needs agent 0.4.0.
 - Enrollment: a QR code can name system apps for the agent to hide as it takes over, under
   `com.mdmesh.HIDE_PACKAGES` in its admin extras, so the setup pages and app promoters they add never show. If the
-  setup wizard stumbles over a hidden app, no crash dialog shows: error dialogs are held back until setup completes.
-  Needs agent 0.4.0.
+  setup wizard stumbles over a hidden app, no crash dialog shows: error dialogs are held back until setup completes,
+  and the agent restarts the wizard so it finishes on its own. Needs agent 0.4.0.
 - Audit log: commands sent from a device's page or to selected devices (wipe, lock, PIN reset, kiosk, alert) are
   recorded with who sent them, from which address, to which devices, and the command type. The command's settings are
   not recorded, since they can hold a password. "Install config apps" on a device is recorded too
   (thanks @Przemek-Magic).
 
 Fixes
+- Kiosk: the kiosk app no longer asks for permissions on its first start. The agent grants it every runtime
+  permission it requests (camera, microphone, notifications…) before opening it. Needs agent 0.4.0.
 - Kiosk: the phone's own launcher no longer shows before the kiosk app, neither at enrollment while the app downloads
   nor at every restart. The kiosk starts before the app's install finishes and opens the app once it is in, and the
   other launchers are hidden while in kiosk and come back when it ends. Needs agent 0.4.0.
