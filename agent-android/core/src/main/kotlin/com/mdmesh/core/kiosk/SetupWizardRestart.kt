@@ -1,6 +1,5 @@
 package com.mdmesh.core.kiosk
 
-import android.app.admin.DevicePolicyManager
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
@@ -17,34 +16,34 @@ import kotlinx.coroutines.delay
  * crashes instead, and each crash only closes its top page, so it reopens its history page by page until it reaches
  * the QR scanner, which waits for someone to press Back.
  *
- * A restart hides the wizard's package, which ends its process and its history, unhides it, and opens HOME, which
- * the wizard holds until setup completes. It is repeated a few times while setup has still not completed.
+ * A restart opens the wizard's entry activity in a new task that replaces its own, which closes that history. Never by
+ * hiding its package: Android then treats the wizard as uninstalled, and the Wi-Fi service deletes every network it
+ * saved (WifiServiceImpl's package-removed receiver, `WifiConfigManager.removeNetworksForApp`), the Wi-Fi joined during
+ * setup included, so the device is offline the moment setup ends. It is repeated a few times while setup has still
+ * not completed.
  */
 class SetupWizardRestart(
     context: Context,
-    private val admin: ComponentName,
     private val userSetup: UserSetup,
 ) {
     private val context = context.applicationContext
 
-    /** The setup wizard: the HOME activity that also declares [CATEGORY_SETUP_WIZARD], or null without one. */
-    fun wizardPackage(): String? = runCatching {
+    /** The setup wizard's entry: the HOME activity that also declares [CATEGORY_SETUP_WIZARD], or null without one. */
+    fun wizard(): ComponentName? = runCatching {
         context.packageManager.queryIntentActivities(home().addCategory(CATEGORY_SETUP_WIZARD), 0)
-            .firstOrNull()?.activityInfo?.packageName
+            .firstOrNull()?.activityInfo?.let { ComponentName(it.packageName, it.name) }
     }.getOrNull()
 
     /** Restarts [wizard] after each of [DELAYS_MS] while setup has not completed. Suspends for up to a minute. */
-    suspend fun untilComplete(wizard: String) {
-        val dpm = context.getSystemService(DevicePolicyManager::class.java) ?: return
+    suspend fun untilComplete(wizard: ComponentName) {
         for (wait in DELAYS_MS) {
             delay(wait)
             if (userSetup.isComplete()) return
-            runCatching {
-                dpm.setApplicationHidden(admin, wizard, true)
-                delay(HIDDEN_MS)
-                dpm.setApplicationHidden(admin, wizard, false)
-                context.startActivity(home().addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-            }.onFailure { Log.w(TAG, "could not restart the setup wizard", it) }
+            val flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+            runCatching { context.startActivity(home().setComponent(wizard).addFlags(flags)) }
+                .recoverCatching { context.startActivity(home().addFlags(flags)) } // its entry is not exported
+                .onSuccess { Log.i(TAG, "restarted the setup wizard") }
+                .onFailure { Log.w(TAG, "could not restart the setup wizard", it) }
         }
     }
 
@@ -61,8 +60,5 @@ class SetupWizardRestart(
          * Lenovo), then twice more should setup still not be complete.
          */
         val DELAYS_MS = listOf(5_000L, 15_000L, 15_000L)
-
-        /** Long enough for the hide to end the wizard's process and close its pages. */
-        const val HIDDEN_MS = 500L
     }
 }

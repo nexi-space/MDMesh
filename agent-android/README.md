@@ -123,8 +123,9 @@ the wizard restarts on its short provisioned path and finishes, skipping the rem
 that no "has stopped" dialog waits for the person enrolling, the agent sets `DISALLOW_SYSTEM_ERROR_DIALOGS` before
 it hides anything and lifts it as soon as setup completes (`AndroidUserSetup.quietUntilComplete`). Each crash only
 closes the wizard's top page, though, and it reopens its history back to the QR scanner. So the agent then restarts
-the wizard from scratch (hiding and unhiding its package, then opening HOME), which sends it down its short path to
-its exit, repeated a few times while setup is not complete (`SetupWizardRestart`).
+the wizard from scratch, opening its entry in a new task that replaces its own, which sends it down its short path to
+its exit, repeated a few times while setup is not complete (`SetupWizardRestart`). Never by hiding the wizard's
+package: Android then treats it as uninstalled and deletes the Wi-Fi networks it saved, the setup Wi-Fi included.
 
 A test enrollment can be followed over adb from its first minute: `com.mdmesh.ENABLE_ADB` set to `"true"` in the QR's
 admin extras has the agent turn USB debugging on as it takes over (`EnrollmentDebugging`). Never in a production QR.
