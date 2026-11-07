@@ -121,7 +121,14 @@ pages and the app promoter shown after setup. Hidden apps are not uninstalled, a
 Hiding an OEM's setup app can make the setup wizard crash when it next loads that app's part of its script. Closed,
 the wizard restarts on its short provisioned path and finishes, skipping the remaining pages, Google's included. So
 that no "has stopped" dialog waits for the person enrolling, the agent sets `DISALLOW_SYSTEM_ERROR_DIALOGS` before
-it hides anything and lifts it as soon as setup completes (`AndroidUserSetup.quietUntilComplete`).
+it hides anything and lifts it as soon as setup completes (`AndroidUserSetup.quietUntilComplete`). Each crash only
+closes the wizard's top page, though, and it reopens its history back to the QR scanner. So the agent then restarts
+the wizard from scratch (hiding and unhiding its package, then opening HOME), which sends it down its short path to
+its exit, repeated a few times while setup is not complete (`SetupWizardRestart`).
+
+The kiosk launcher grants its pinned app every runtime permission it requests before opening it
+(`KioskAppPermissions`): the permission policy's auto-grant leaves camera, microphone and notifications to a prompt
+on Android 16, and nobody is at a kiosk to answer one.
 
 The phone's own launcher never shows on a kiosk device. A check-in batch holding `config.apply` runs its
 `app.install`s last, so the kiosk starts without waiting for a large download, and the kiosk launcher waits on its
