@@ -164,7 +164,7 @@ class InstallManager @Inject constructor(
             val outcome = runCatching { commitInstall(req.packageName, fetched.map { it.file }) }
                 .getOrElse { return InstallOutcome.Failure(null, "install session error: ${it.message}") }
             val totalMs = System.currentTimeMillis() - started
-            Log.i(TAG, "install ${req.packageName}: ${outcome::class.simpleName} after $totalMs ms")
+            Log.i(TAG, "install ${req.packageName}: ${logName(outcome)} after $totalMs ms")
 
             // 4. Optionally launch the app on success.
             if (outcome is InstallOutcome.Success && req.runAfterInstall) {
@@ -335,6 +335,13 @@ class InstallManager @Inject constructor(
         PackageInstaller.STATUS_FAILURE_STORAGE -> "FAILURE_STORAGE"
         PackageInstaller.STATUS_FAILURE_INCOMPATIBLE -> "FAILURE_INCOMPATIBLE"
         else -> "STATUS_$status"
+    }
+
+    /** Named here, not by class: a release build renames the classes. No reason: it can carry the APK's URL. */
+    private fun logName(outcome: InstallOutcome): String = when (outcome) {
+        InstallOutcome.Success -> "installed"
+        is InstallOutcome.Skipped -> "skipped"
+        is InstallOutcome.Failure -> "failed"
     }
 
     private companion object {
